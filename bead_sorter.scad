@@ -5,8 +5,8 @@ rotator_height = 7;
 bead_hole_radius = 4;
 bead_hole_to_edge = 10;
 bead_hole_angle = 15;
-sensor_angle = 30;
-entry_angle = 60;
+sensor_angle = 40;
+entry_angle = 80;
 structural_screw_hole_radius = 2;
 structural_screw_hole_to_edge = 10;
 structural_screw_spacing = 20;
@@ -14,7 +14,11 @@ servo_screw_hole_radius = 1;
 servo_screw_hole_to_edge = 10;
 servo_screw_spacing = 12.5;
 servo_screw_height = 10;
-stepper_motor_shaft_hole_height = 8;  // 5mm measured.
+stepper_motor_shaft_hole_height = 100;  // FIXME? Probably fine.
+stepper_motor_shaft_min_width = 3.5;  // 3mm measured, squared sides.
+stepper_motor_shaft_max_radius = 3.1;  // 6mm diameter measured, rounded sides.
+stepper_motor_shaft_y_offset = 10;  // Offset from center: measured 6mm from edge.
+
 guide_length = 94;
 guide_od = 15;
 guide_id = 10;
@@ -29,7 +33,7 @@ wall_width = 2.5;
 drop_y = 140/2-(bead_hole_radius+wall_width);
 tr_radius = 3.75;  // 1/4" (7m) diameter threaded rod, 3.5 was too tight -- was good for locking on threads.
 tr_distance = 116;
-epsilon = 0.01;  // Enough to avoid z-fighting.
+epsilon = 0.02;  // Enough to avoid z-fighting.
 
 // Previously, before bringing it in to fit on the bed.
 // drop_y=guide_length*0.75-guide_pivot_offset;
@@ -217,28 +221,26 @@ module half_straw() {
 
 module stepper_shaft_hole_pattern() {
     intersection() {
-        width = 3.5;  // 3mm measured.
-        diameter = 7;  // 6mm measured.
-        cube([width, diameter, stepper_motor_shaft_hole_height], center=true);
-        cylinder(h = stepper_motor_shaft_hole_height, r = diameter/2, center=true, $fn=32);
+        cube([stepper_motor_shaft_min_width, 2*stepper_motor_shaft_max_radius, stepper_motor_shaft_hole_height], center=true);
+        cylinder(h = stepper_motor_shaft_hole_height, r = stepper_motor_shaft_max_radius, center=true, $fn=32);
     }
 }
 
 module slide_stepper_motor_bracket() {
-    bracket_height = 30;  // Some gets chopped off by intersection.
+    bracket_height = 32;  // Some gets chopped off by intersection.
+    bracket_radius = stepper_motor_shaft_max_radius + wall_width;
     set_screw_radius = 1.5;
     set_screw_distance_from_end = 2;
         
     difference() {
-        translate([0, -guide_pivot_offset, -bracket_height/2])
-            cylinder(h = bracket_height, r = 4, center=true);
+        translate([0, 0, -bracket_height/2])
+            cylinder(h = bracket_height, r = bracket_radius, center=true);
         // Take off the part that intersects the straw.
         rotate([slide_angle, 0, 0])
           translate([0, -guide_length/2+guide_pivot_offset, 0])
                support_straw_cutout();
         // Take out the stepper motor shaft.
-        translate([0, 0, -(bracket_height-stepper_motor_shaft_hole_height/2+epsilon)])
-            stepper_shaft_hole_pattern();
+        stepper_shaft_hole_pattern();
         // Add a hole for a set screw.
         translate([0, 0, -(bracket_height-set_screw_distance_from_end-set_screw_radius)])
             rotate([0, 90, 0])
@@ -271,8 +273,8 @@ module slide() {
         translate([0, -guide_length/2+guide_pivot_offset, 0])
             half_straw();
     // Take off the top points, so it can be near the flat piece above.
-    translate([0, 0, support_straw_cutout_height/2])
-        cube([guide_od, guide_length, support_straw_cutout_height], center=true);
+    // translate([0, 0, support_straw_cutout_height/2])
+    //    cube([guide_od, guide_length, support_straw_cutout_height], center=true);
       
     // Remove a cylinder for things to fall through.
     fall_through_cylinder();
@@ -289,12 +291,15 @@ module slide_fall_through() {
 }
 
 module slide_guide() {
-  translate([0, guide_pivot_offset, 0])
-      union() {
-          slide();
-          slide_fall_through();
-          slide_stepper_motor_bracket();
-      }
+    union() {
+        translate([0, guide_pivot_offset, 0])
+              union() {
+                  slide();
+                  slide_fall_through();
+              }
+      
+        slide_stepper_motor_bracket();
+    }
 }
 
 module slide_cover() {
@@ -317,16 +322,70 @@ module slide_cover() {
 }
 
 
-module half_cross_structure() {
+module threaded_rod_od(h) {
+    cylinder(h = h, r=tr_radius+wall_width, center=true);
+}
+
+module threaded_rod_id() {
+    cylinder(h = 200, r=tr_radius, center=true);
+}
+
+module stabilizer_old() {
+    nut_inset = [11.5, 12.8, 8];  // Measured [11mm, 12.3mm, 5.5mm].
+    nut_outset = [wall_width, wall_width, wall_width] + nut_inset;
+    stabilizer_height = 30;
+    
+    module nut_holder() {
+        difference() {
+            hull() {
+                translate([0, 0, +stabilizer_height/2+wall_width]) cube(nut_outset, center=true);
+                cube([1,1,1], center=true);
+            }
+            translate([0, 0, stabilizer_height/2+2*wall_width+epsilon]) cube(nut_inset, center=true);
+        }
+    }
+        
+    difference() {
+        union() {
+            nut_holder();
+            rotate([0, 180, 0]) nut_holder();
+            threaded_rod_od(stabilizer_height);
+        }
+        threaded_rod_id();
+    }
+}
+
+module stabilizer() {
+    nut_inset = [11.5, 12.8, 8];  // Measured [11mm, 12.3mm, 5.5mm].
+    nut_outset = [wall_width, wall_width, wall_width] + nut_inset;
+    stabilizer_height = 30;
+    
+    module nut_holder() {
+        difference() {
+            hull() {
+                translate([0, 0, +stabilizer_height/2+wall_width]) cube(nut_outset, center=true);
+                cube([1,1,1], center=true);
+            }
+            translate([0, 0, stabilizer_height/2+2*wall_width+epsilon]) cube(nut_inset, center=true);
+        }
+    }
+        
+    difference() {
+        union() {
+            nut_holder();
+            // rotate([0, 180, 0]) nut_holder();
+            threaded_rod_od(stabilizer_height);
+        }
+        threaded_rod_id();
+    }
+}
+
+
+module half_cross() {
     wall_width = 2.5;
     pos = tr_distance/2;
     center_cylinder_radius = 10;
-    module threaded_rod_od() {
-        cylinder(h = rotator_height, r=tr_radius+wall_width, center=true);
-    }
-    module threaded_rod_id() {
-        cylinder(h = rotator_height+epsilon, r=tr_radius, center=true);
-    }
+
     difference() {
         union() {
             hull() {
@@ -335,8 +394,8 @@ module half_cross_structure() {
                 translate([pos, pos, 0])
                     cylinder(h = rotator_height, r=wall_width, center=true);
             }
-            translate([-pos, -pos, 0]) threaded_rod_od();
-            translate([+pos, +pos, 0]) threaded_rod_od();
+            translate([-pos, -pos, 0]) children();
+            translate([+pos, +pos, 0]) children();
             cylinder(h = rotator_height, r=center_cylinder_radius, center=true);
         }
         translate([-pos, -pos, 0]) threaded_rod_id();
@@ -344,11 +403,30 @@ module half_cross_structure() {
     }
 }
 
-module cross_structure() {
+module full_cross() {
     union() {
-        half_cross_structure();
-        rotate([0, 0, 90]) half_cross_structure();
+        half_cross() children(0);
+        rotate([0, 0, 90]) half_cross() children(0);
     }
+}
+
+module cross_stabilizer_structure() {
+  full_cross() rotate([0, 0, 45]) translate([0, 0, 5]) stabilizer();
+}
+
+module threaded_rod_slider() {
+    difference() {
+        threaded_rod_od(rotator_height);
+        threaded_rod_id();
+    }
+}
+
+module cross_structure() {
+    full_cross() threaded_rod_slider();
+}
+
+module half_cross_structure() {
+    half_cross() threaded_rod_slider();
 }
 
 module fall_guide360() {
@@ -367,6 +445,10 @@ module fall_guide360() {
       union() {
         ring();
         cross_structure();
+        translate([0, 0, rotator_height/2]) union() {
+            %stepper_motor(); 
+            stepper_motor_mount();
+        }
       }
 
       // Take out the holes.
@@ -393,16 +475,17 @@ module sensor_mount() {
     pivot_offset = 9;
     sensor_see_hole = 12;
     sensor_sit_hole = 21;
+    sensor_sit_hole_lift = 1;  // Sensor floor sits 1mm above level floor.
     sensor_screw_hole_radius = 1.5;  // FIXME
     sensor_block_width = sensor_sit_hole + 2*extra_wall;
-    sensor_block_depth = sensor_sit_hole + 4*extra_wall;
-    sensor_screw_hole_x_offset = 7;  // Measured 14mm/2.
+    sensor_block_depth = sensor_sit_hole + 2*extra_wall;
+    sensor_screw_hole_x_offset = 8;  // Measured 14mm/2, moved after trying it.
     sensor_screw_hole_y_offset = 8;  // Measured 20mm/2-2mm -> 8.
     union() {
         difference() {
             cube([sensor_block_width, sensor_block_depth, rotator_height], center=true);
-            translate([0, 0, rotator_height/4+epsilon])
-                cube([sensor_sit_hole, sensor_sit_hole, rotator_height/2], center=true);
+            translate([0, 0, sensor_sit_hole_lift])
+                cube([sensor_sit_hole, sensor_sit_hole, rotator_height], center=true);
             cube([sensor_see_hole, sensor_see_hole, rotator_height+epsilon], center=true);
             translate([sensor_screw_hole_x_offset, sensor_screw_hole_y_offset, 0])
                 cylinder(h = 200, r = sensor_screw_hole_radius, center=true);
@@ -420,8 +503,9 @@ module sensor_mount_level() {
   }
   union() {
       difference() {
-          cross_structure();
+          stable_arc_level();
           scale([1, 1, 1+epsilon]) hull() oriented_sensor_mount();
+          pivot_on_arc_axis(entry_angle) bead_hole_axis();
       }
       oriented_sensor_mount();
   }
@@ -450,6 +534,58 @@ module arc_pivot_axis() {
     x_offset = arc_radius - bead_hole_to_edge;
     translate([-x_offset, 0, 0])
         cylinder(h = 200, r = servo_screw_hole_radius, center=true);
+}
+
+module stepper_motor() {
+    union() {
+        h1 = 20;
+        h2 = 4;
+        translate([0, 0, h1+h2/2])
+            #cylinder(h = h2, r = 5, center=true);
+        translate([0, stepper_motor_shaft_y_offset, +h1/2])
+            cylinder(h = h1, r = 16, center=true);
+    }
+}
+
+module stepper_motor_mount() {
+  stepper_motor_bracket_overhang=4;
+  stepper_motor_height = 18;
+  stepper_motor_bracket_height = stepper_motor_height + wall_width;
+  stepper_motor_radius = 29/2;  // 28.2mm measured diameter.
+  mount_hole_distance = 35;
+  mount_hole_radius = 1.8;  // 1.5 was too small, 2 was too big.
+  pedestal_radius = wall_width+mount_hole_radius;
+  distance_from_center=stepper_motor_radius+stepper_motor_bracket_overhang;
+  module pedestal(h) {
+      hull() {
+          translate([0, distance_from_center, 0])
+              cylinder(h=h, r=pedestal_radius, center=true);
+          cylinder(h=h, r=pedestal_radius, center=true);
+      }
+  }
+
+  translate([0, stepper_motor_shaft_y_offset, stepper_motor_bracket_height/2-wall_width]) union() {
+  difference() {
+      union() {
+          rotate([0, 0, 90]) pedestal(stepper_motor_bracket_height);
+          rotate([0, 0, 180]) pedestal(stepper_motor_bracket_height);
+          rotate([0, 0, 270]) pedestal(stepper_motor_bracket_height);
+      }
+      cylinder(h = stepper_motor_bracket_height+epsilon, r=stepper_motor_radius, center=true);
+      translate([mount_hole_distance/2, 0, 0])
+          cylinder(h=200, r=mount_hole_radius, center=true);
+      translate([-mount_hole_distance/2, 0, 0])
+          cylinder(h=200, r=mount_hole_radius, center=true);
+
+  }
+  translate([0, 0, -stepper_motor_bracket_height/2+wall_width/2])
+      hull() {
+          pedestal(wall_width);
+          rotate([0, 0, 90]) pedestal(wall_width);
+          rotate([0, 0, 180]) pedestal(wall_width);
+          rotate([0, 0, 270]) pedestal(wall_width);
+      }
+  }
 }
 
 module debug_aids() {
@@ -492,35 +628,46 @@ module stack() {
 
     translate([0, 0, -90]) {
         fall_guide360();
-        %stepper_motor();
+    }
+    
+    translate([0, 0, -120]) {
+        cross_stabilizer_structure();
     }
 }
 
 
+
+/*
+difference() {
+    stabilizer();
+    translate([0, 0, 15]) cube([30, 30, 30], center=true);
+}
+*/
+/*
+intersection() {
+  stepper_motor_mount();
+  translate([20, 10, 15]) cube([20, 20, 20], center=true);
+}
+*/
+// cross_stabilizer_structure();
+// stabilizer();
 debug_aids();
-// stack();
+stack();
+
 // fall_guide90();
-// slide_guide();
+/* // shortened stepper motor shaft mount
+difference() {
+    slide_stepper_motor_bracket();
+    cube([20,20,47], center=true);
+}
+*/
+//slide_guide();
 // sensor_mount();
 // sensor_mount_level();
 // stable_arc();
- stable_arc_level();
+// stable_arc_level();
+// stepper_motor();
 
 // rotating_arc_mount_level();
 //    rotate([0, 0, +bead_hole_angle])
 //        rotating_arc_level();
-
-
-module stepper_motor() {
-    union() {
-        h1 = 20;
-        h2 = 4;
-        stepper_motor_shaft_x_offset = 10;  // Offset from center: measured 6mm from edge.
-        #translate([0, 0, h1+h2+stepper_motor_shaft_hole_height/2])
-            stepper_shaft_hole_pattern();
-        translate([0, 0, h1+h2/2])
-            cylinder(h = h2, r = 5, center=true);
-        translate([stepper_motor_shaft_x_offset, 0, +h1/2])
-            cylinder(h = h1, r = 16, center=true);
-    }
-}
