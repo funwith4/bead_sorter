@@ -52,10 +52,6 @@ module bead_hole_pattern() {
   cylinder(rotator_height, bead_hole_radius, bead_hole_radius, center=true);
 }
 
-module structural_screw_hole_pattern() {
-  cylinder(rotator_height, structural_screw_hole_radius, structural_screw_hole_radius, center=true);
-}
-
 module servo_screw_hole_pattern() {
   cylinder(servo_screw_height, servo_screw_hole_radius, servo_screw_hole_radius, center=true);
 }
@@ -177,17 +173,13 @@ module stable_arc_level() {
 }
 
 module fall_through_cylinder() {
-    translate([0, -drop_y-guide_pivot_offset, 0])
-        cylinder(h=200, r=bead_hole_radius, center=true); 
+    cylinder(h=200, r=bead_hole_radius, center=true); 
 }
 
-module fall_through_straw() {
-  estimate_height = 14;
-  overshoot_height = estimate_height+40;
-  translate([0, -drop_y-guide_pivot_offset, -overshoot_height/2])
+module fall_through_straw(h) {
       difference() {
-          cylinder(h=overshoot_height, r=bead_hole_radius+wall_width, center=true);
-          cylinder(h=overshoot_height+epsilon, r=bead_hole_radius, center=true);
+          cylinder(h=h, r=bead_hole_radius+wall_width, center=true);
+          cylinder(h=h+epsilon, r=bead_hole_radius, center=true);
       }
 }
 
@@ -199,24 +191,6 @@ module support_straw_cutout() {
     translate([0, 0, support_straw_cutout_height/2])
       cube([guide_od, guide_length, support_straw_cutout_height], center=true);
   }
-}
-
-// A straw shape.
-module closed_straw() {
-    rotate([90,0,0])
-        difference() {
-            cylinder(guide_length, guide_od/2, guide_od/2, center=true);
-            cylinder(guide_length-2*wall_width, guide_id/2, guide_id/2, center=true); 
-        }
-}
-
-// A straw cut in half.
-module half_straw() {
-    difference() {
-        closed_straw();
-        translate([0,0,guide_length/2])
-            cube([guide_length, guide_length+epsilon, guide_length], center=true);
-    }
 }
 
 module stepper_shaft_hole_pattern() {
@@ -235,10 +209,6 @@ module slide_stepper_motor_bracket() {
     difference() {
         translate([0, 0, -bracket_height/2])
             cylinder(h = bracket_height, r = bracket_radius, center=true);
-        // Take off the part that intersects the straw.
-        rotate([slide_angle, 0, 0])
-          translate([0, -guide_length/2+guide_pivot_offset, 0])
-               support_straw_cutout();
         // Take out the stepper motor shaft.
         stepper_shaft_hole_pattern();
         // Add a hole for a set screw.
@@ -248,79 +218,74 @@ module slide_stepper_motor_bracket() {
     }
 }
 
-module slide_servo_bracket() {
-  servo_screw_z = -support_height + servo_screw_height/2;
-  difference() {
-    // Start with a rectangle that intersects the straw.
-    translate([0, -support_length/2, -support_height/2])
-      cube([support_width, support_length, support_height], center=true);
-    // Take off the part that intersects the straw.
-    rotate([slide_angle, 0, 0])
-      translate([0, -guide_length/2+guide_pivot_offset, 0])
-           support_straw_cutout();       
-    // Take out the screws.
-    translate([0, -guide_pivot_offset, servo_screw_z])
-      servo_screw_hole_pattern();
-    translate([0, -guide_pivot_offset-servo_screw_spacing, servo_screw_z])
-      servo_screw_hole_pattern();
-  }
-}
+// straw_y_offset = -guide_length/2+2+guide_pivot_offset-wall_width;
 
+straw_y_offset = -(drop_y/2+guide_pivot_offset);
+
+// The bulk of the slide. This is expected to be cut into top and botton, at
+// which point the masks for bead fall throughs must be applied. The masks cannot
+// be applied to the full slide because holes don't extend through both the
+// top and bottom.
 module slide() {
-  difference() {
-    // Start with a half_straw shape.
-    rotate([slide_angle, 0, 0])
-        translate([0, -guide_length/2+guide_pivot_offset, 0])
-            half_straw();
-    // Take off the top points, so it can be near the flat piece above.
-    // translate([0, 0, support_straw_cutout_height/2])
-    //    cube([guide_od, guide_length, support_straw_cutout_height], center=true);
-      
-    // Remove a cylinder for things to fall through.
-    fall_through_cylinder();
-  }
-}
-
-module slide_fall_through() {
-   difference() {
-        fall_through_straw();
-        rotate([slide_angle, 0, 0])
-            translate([0, -guide_length/2+guide_pivot_offset, 0])
-                support_straw_cutout();
-    }
-}
-
-module slide_guide() {
-    union() {
-        translate([0, guide_pivot_offset, 0])
-              union() {
-                  slide();
-                  slide_fall_through();
-              }
-      
-        slide_stepper_motor_bracket();
-    }
-}
-
-module slide_cover() {
-    union() {
-      slide_cover_length = 30;
-      top_slit_width = 4;
-      top_slit_length = slide_cover_length - wall_width*2;
-
-      // Rotate it so it's properly oriented (but not on a 30deg tilt).
-      rotate([0, 180, 0])
-        difference() {
-            translate([0, guide_length/2 - slide_cover_length, 0])
-                half_straw();
-            translate([0, guide_length/2, 0])
-                cube([guide_length, guide_length, guide_length], center=true);
-            translate([0, -top_slit_length/2, 0])
-                cube([top_slit_width, top_slit_length, guide_od], center=true);
+    slot_width = 3;
+    slot_end_buffer = 15;
+    slot_mask_height = 20;
+    difference() {
+        union() {
+            rotate([slide_angle, 0, 0])
+                    translate([0, straw_y_offset, 0])
+                        rotate([90,0,0])
+                            cylinder(guide_length, guide_od/2, guide_od/2, center=true);            
+            translate([0, 0, 8])
+                cylinder(h=20, r=bead_hole_radius+wall_width, center=true);
         }
+        rotate([slide_angle, 0, 0]) translate([0, 0, slot_mask_height/2])
+            hull() {    
+                cylinder(h=slot_mask_height, r=slot_width/2, center=true);
+                translate([0, -(guide_length-slot_end_buffer), 0])
+                    cylinder(h=slot_mask_height, r=slot_width/2, center=true);
+            }
     }
 }
 
+// A mask used to separate the top from the bottom and cut out the inside
+// of the straw.
+module slide_mask() {
+    union() {
+        translate([0, 0, -100]) cube([200, 200, 200], center=true);
+        translate([0, straw_y_offset, 0]) rotate([90,0,0]) 
+            cylinder(guide_length-2*wall_width, guide_id/2, guide_id/2, center=true);      
+    }
+}
+
+module slide_top() {
+    difference() {
+        slide();
+        rotate([slide_angle, 0, 0]) slide_mask();
+        fall_through_cylinder();
+    }
+}
+//!slide_top();
+
+module slide_bottom() {
+    difference() {
+        union() {
+            slide();
+            slide_stepper_motor_bracket();
+            slide_out_cylinder();
+        }
+        rotate([slide_angle, 0, 0]) rotate([0, 180, 0]) slide_mask();
+        translate([0, -drop_y, 0]) fall_through_cylinder();
+    }
+}
+
+// !slide_bottom();
+module slide_out_cylinder() {
+  estimate_height = 14;
+  overshoot_height = estimate_height+40;
+  translate([0, -drop_y, -overshoot_height/2])
+      cylinder(h=overshoot_height, r=bead_hole_radius+wall_width, center=true);
+}
 
 module threaded_rod_od(h) {
     cylinder(h = h, r=tr_radius+wall_width, center=true);
@@ -455,7 +420,7 @@ module fall_guide360() {
       for ( d = [0 : (360/64 * 2) : 359] ){  
           rotate([0, 0, d])
             rotate([0, 0, 360/64])  // Don't put holes on axes.
-              translate([0, guide_pivot_offset, 0])
+                translate([0, -drop_y, 0])
                   fall_through_cylinder();
       }
   }
@@ -603,14 +568,10 @@ module debug_aids() {
                 rotating_arc_level();
         }
         arc_pivot_axis();
-        
     }
 }
 
 module stack() {
-    translate([0, 0, 20])
-        slide_cover();
-
     translate([0, 0, 10])
         sensor_mount_level();
 
@@ -622,12 +583,15 @@ module stack() {
 
     translate([0, 0, -20])
         stable_arc_level();
+    union() {
+    translate([0, 0, -45])
+        slide_top();
 
-    translate([0, 0, -30])
-        slide_guide();
-
-    translate([0, 0, -90]) {
-        fall_guide360();
+    translate([0, 0, -50])
+        slide_bottom();
+    }
+    translate([0, 0, -110]) {
+        !fall_guide360();
     }
     
     translate([0, 0, -120]) {
@@ -661,7 +625,7 @@ difference() {
     cube([20,20,47], center=true);
 }
 */
-//slide_guide();
+
 // sensor_mount();
 // sensor_mount_level();
 // stable_arc();
