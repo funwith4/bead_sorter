@@ -17,7 +17,11 @@ servo_screw_height = 10;
 stepper_motor_shaft_hole_height = 100;  // FIXME? Probably fine.
 stepper_motor_shaft_min_width = 3.5;  // 3mm measured, squared sides.
 stepper_motor_shaft_max_radius = 3.1;  // 6mm diameter measured, rounded sides.
-stepper_motor_shaft_y_offset = 10;  // Offset from center: measured 6mm from edge.
+stepper_motor_height = 18;
+stepper_motor_radius = 29/2;  // 28.2mm measured diameter.
+stepper_motor_mount_hole_distance = 35;  // Distance between mount holes on center.
+stepper_motor_mount_hole_radius = 1.8;  // 1.5 was too small, 2 was too big.
+stepper_motor_shaft_y_offset = stepper_motor_radius - 6;  // Offset from center: measured 6mm from edge.
 
 guide_length = 94;
 guide_od = 15;
@@ -119,10 +123,10 @@ module rotating_arc_servo_mount() {
     pivot_offset = 9.5;
     cutout_width = 24;
     cutout_depth = 13;
-    servo_mount_hole_distance = 28;
+    servo_stepper_motor_mount_hole_distance = 28;
     servo_mount_hole_dia = 3;  // 2mm + 1mm hole printing error.
     magic_alignment = 28;
-    translate([servo_mount_hole_distance/2-pivot_offset, 0, 0])
+    translate([servo_stepper_motor_mount_hole_distance/2-pivot_offset, 0, 0])
         difference() {
             translate([0, -extra_wall, 0]) {
                 hull() {
@@ -133,9 +137,9 @@ module rotating_arc_servo_mount() {
                 }
             }
             cube([cutout_width, cutout_depth, rotator_height+epsilon], center=true);
-            translate([-servo_mount_hole_distance/2, 0, 0])
+            translate([-servo_stepper_motor_mount_hole_distance/2, 0, 0])
                 cylinder(h=rotator_height+epsilon, r=servo_mount_hole_dia/2, center=true);
-            translate([servo_mount_hole_distance/2, 0, 0])
+            translate([servo_stepper_motor_mount_hole_distance/2, 0, 0])
                 cylinder(h=rotator_height+epsilon, r=servo_mount_hole_dia/2, center=true);
         }
 }
@@ -379,19 +383,19 @@ module cross_stabilizer_structure() {
   full_cross() rotate([0, 0, 45]) translate([0, 0, 5]) stabilizer();
 }
 
-module threaded_rod_slider() {
+module threaded_rod_slider(h) {
     difference() {
-        threaded_rod_od(rotator_height);
+        threaded_rod_od(h);
         threaded_rod_id();
     }
 }
 
 module cross_structure() {
-    full_cross() threaded_rod_slider();
+    full_cross() threaded_rod_slider(rotator_height);
 }
 
 module half_cross_structure() {
-    half_cross() threaded_rod_slider();
+    half_cross() threaded_rod_slider(rotator_height);
 }
 
 module fall_guide360() {
@@ -503,24 +507,23 @@ module arc_pivot_axis() {
 
 module stepper_motor() {
     union() {
-        h1 = 20;
-        h2 = 4;
+        h1 = stepper_motor_height + 1;
+        h2 = 3;
+        h3 = 2;
+        translate([0, 0, +h1+h2+h3/2])
+            #cylinder(h = h1, r = 2, center=true);
         translate([0, 0, h1+h2/2])
-            #cylinder(h = h2, r = 5, center=true);
+            cylinder(h = h2, r = 5, center=true);
         translate([0, stepper_motor_shaft_y_offset, +h1/2])
-            cylinder(h = h1, r = 16, center=true);
+            cylinder(h = h1, r = stepper_motor_radius, center=true);
+        
     }
 }
 
 module stepper_motor_mount() {
-  stepper_motor_bracket_overhang=4;
-  stepper_motor_height = 18;
   stepper_motor_bracket_height = stepper_motor_height + wall_width;
-  stepper_motor_radius = 29/2;  // 28.2mm measured diameter.
-  mount_hole_distance = 35;
-  mount_hole_radius = 1.8;  // 1.5 was too small, 2 was too big.
-  pedestal_radius = wall_width+mount_hole_radius;
-  distance_from_center=stepper_motor_radius+stepper_motor_bracket_overhang;
+  pedestal_radius = wall_width+stepper_motor_mount_hole_radius;
+  distance_from_center=stepper_motor_mount_hole_distance/2;
   module pedestal(h) {
       hull() {
           translate([0, distance_from_center, 0])
@@ -537,19 +540,26 @@ module stepper_motor_mount() {
           rotate([0, 0, 270]) pedestal(stepper_motor_bracket_height);
       }
       cylinder(h = stepper_motor_bracket_height+epsilon, r=stepper_motor_radius, center=true);
-      translate([mount_hole_distance/2, 0, 0])
-          cylinder(h=200, r=mount_hole_radius, center=true);
-      translate([-mount_hole_distance/2, 0, 0])
-          cylinder(h=200, r=mount_hole_radius, center=true);
+      translate([stepper_motor_mount_hole_distance/2, 0, 0])
+          cylinder(h=200, r=stepper_motor_mount_hole_radius, center=true);
+      translate([-stepper_motor_mount_hole_distance/2, 0, 0])
+          cylinder(h=200, r=stepper_motor_mount_hole_radius, center=true);
 
   }
   translate([0, 0, -stepper_motor_bracket_height/2+wall_width/2])
+    difference() {
       hull() {
           pedestal(wall_width);
           rotate([0, 0, 90]) pedestal(wall_width);
           rotate([0, 0, 180]) pedestal(wall_width);
           rotate([0, 0, 270]) pedestal(wall_width);
       }
+      // Give it a little channel for the wires to be tucked in to.
+      hull() {
+          translate([2, 15, 0]) cylinder(h = 10, r=1.5, center=true);
+          translate([-10, 15, 0]) cylinder(h = 10, r=1.5, center=true);
+      }
+    }
   }
 }
 
@@ -587,12 +597,18 @@ module stack() {
     translate([0, 0, -45])
         slide_top();
 
-    translate([0, 0, -50])
+    translate([0, 0, -50]) {
         slide_bottom();
+        for ( d = [90 : 90 : 359] ){  
+            rotate([0, 0, d])
+                %slide_bottom();
+        }
     }
+    
     translate([0, 0, -110]) {
-        !fall_guide360();
+        fall_guide360();
     }
+   }
     
     translate([0, 0, -120]) {
         cross_stabilizer_structure();
@@ -615,8 +631,9 @@ intersection() {
 */
 // cross_stabilizer_structure();
 // stabilizer();
-debug_aids();
-stack();
+// debug_aids();
+// stack();
+
 
 // fall_guide90();
 /* // shortened stepper motor shaft mount
@@ -625,13 +642,16 @@ difference() {
     cube([20,20,47], center=true);
 }
 */
+// threaded_rod_slider(rotator_height+1);
+//threaded_rod_slider(10);
 
 // sensor_mount();
 // sensor_mount_level();
 // stable_arc();
 // stable_arc_level();
 // stepper_motor();
-
+stepper_motor_mount();
+  
 // rotating_arc_mount_level();
 //    rotate([0, 0, +bead_hole_angle])
 //        rotating_arc_level();
